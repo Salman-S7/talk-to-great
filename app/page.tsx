@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
-import { MessageCircle, Users, Clock, Sparkles, ArrowRight, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { MessageCircle, Users, Clock, Sparkles, ArrowRight, Search, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { getConversationSummaries, type ConversationSummary } from '@/lib/conversation-storage';
 import Link from 'next/link';
 
 const historicalFigures = [
@@ -76,6 +77,13 @@ const categories = ['All', 'Politics & Law', 'Science', 'Literature', 'Philosoph
 export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [recentConversations, setRecentConversations] = useState<ConversationSummary[]>([]);
+
+  useEffect(() => {
+    // Load recent conversations on component mount
+    const summaries = getConversationSummaries();
+    setRecentConversations(summaries.slice(0, 3)); // Show only 3 most recent
+  }, []);
 
   const filteredFigures = historicalFigures.filter(figure => {
     const matchesSearch = figure.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -137,6 +145,64 @@ export default function Home() {
           </div>
         </div>
       </section>
+
+      {/* Recent Conversations */}
+      {recentConversations.length > 0 && (
+        <section className="py-16 bg-white/50 backdrop-blur-sm">
+          <div className="container mx-auto px-4">
+            <div className="max-w-6xl mx-auto">
+              <div className="flex items-center space-x-2 mb-8">
+                <History className="h-6 w-6 text-blue-600" />
+                <h2 className="text-2xl font-bold text-gray-900">Continue Your Conversations</h2>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                {recentConversations.map((conversation) => {
+                  const figure = historicalFigures.find(f => f.id === conversation.figureId);
+                  if (!figure) return null;
+                  
+                  return (
+                    <Card key={conversation.figureId} className="group hover:shadow-lg transition-all duration-300 bg-white/80 backdrop-blur-sm">
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-12 h-12 rounded-full overflow-hidden">
+                            <img 
+                              src={figure.image} 
+                              alt={figure.name}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <CardTitle className="text-lg">{figure.name}</CardTitle>
+                            <CardDescription className="text-sm">
+                              {conversation.messageCount} messages
+                            </CardDescription>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                          {conversation.lastMessage}
+                        </p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-gray-500">
+                            {conversation.lastMessageTime.toLocaleDateString()}
+                          </span>
+                          <Link href={`/chat/${conversation.figureId}`}>
+                            <Button size="sm" variant="outline">
+                              Continue
+                            </Button>
+                          </Link>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* Stats Section */}
       <section className="py-16 bg-white/50 backdrop-blur-sm">

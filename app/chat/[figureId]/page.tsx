@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Send, User, Bot, Clock, Copy, Share, MoreVertical } from 'lucide-react';
+import { ArrowLeft, Send, User, Bot, Clock, Copy, Share, MoreVertical, Download, Trash2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { generateAIResponse, getTypingDelay } from '@/lib/ai-responses';
+import { saveMessage, getConversationHistory, clearConversation, exportConversation, type StoredMessage } from '@/lib/conversation-storage';
 
 // Mock data for historical figures
 const figuresData = {
@@ -38,6 +40,33 @@ const figuresData = {
     background: 'Developer of theory of relativity, Nobel Prize winner, and one of the most influential physicists.',
     personality: 'Curious, imaginative, humble about the mysteries of the universe, and passionate about peace.',
     welcomeMessage: "Guten Tag! I am Albert Einstein. The universe is a wonderful mystery, and I've spent my life trying to understand its secrets. What questions about science, life, or the cosmos can I help you explore?"
+  },
+  'curie': {
+    name: 'Marie Curie',
+    title: 'Pioneering Physicist',
+    era: '1867-1934',
+    image: 'https://images.pexels.com/photos/8847618/pexels-photo-8847618.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
+    background: 'First woman to win Nobel Prize and discover radioactive elements',
+    personality: 'Determined, pioneering, scientific, and perseverant in the face of adversity.',
+    welcomeMessage: "Bonjour! I am Marie Curie. Science has been my passion and my life's work. I believe that nothing in life is to be feared, it is only to be understood. What scientific mysteries shall we explore together?"
+  },
+  'shakespeare': {
+    name: 'William Shakespeare',
+    title: 'The Bard',
+    era: '1564-1616',
+    image: 'https://images.pexels.com/photos/8847619/pexels-photo-8847619.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
+    background: 'Greatest writer in English language and world\'s greatest dramatist',
+    personality: 'Eloquent, dramatic, insightful about human nature, and masterful with words.',
+    welcomeMessage: "Good morrow! I am William Shakespeare, humble servant of the written word. All the world's a stage, and I have spent my life chronicling the human drama. What tales of life, love, or loss shall we discuss?"
+  },
+  'mandela': {
+    name: 'Nelson Mandela',
+    title: 'Anti-Apartheid Revolutionary',
+    era: '1918-2013',
+    image: 'https://images.pexels.com/photos/8847620/pexels-photo-8847620.jpeg?auto=compress&cs=tinysrgb&w=150&h=150&fit=crop',
+    background: 'South African leader who fought against apartheid',
+    personality: 'Resilient, forgiving, determined, and inspiring leader for human rights.',
+    welcomeMessage: "Sawubona! I am Nelson Mandela. I have learned that courage is not the absence of fear, but the triumph over it. How can we work together toward a more just and equal world?"
   }
 };
 
@@ -48,30 +77,6 @@ interface Message {
   timestamp: Date;
 }
 
-// Mock AI responses based on historical figure
-const generateResponse = (figureId: string, userMessage: string): string => {
-  const responses = {
-    'ambedkar': [
-      "Education is the milk of a lioness - whoever drinks it will roar. What aspects of learning and empowerment interest you?",
-      "I believe in equality, not in class. Every person deserves dignity and respect regardless of their birth. How can we work together to build a more just society?",
-      "The Constitution is not a mere lawyer's document, it is a vehicle of life, and its spirit is always the spirit of age. What constitutional principles would you like to discuss?"
-    ],
-    'gandhi': [
-      "Be the change you wish to see in the world. What change are you working toward in your own life?",
-      "Truth never damages a cause that is just. How can we apply this principle to the challenges you face?",
-      "In a gentle way, you can shake the world. What gentle actions might create positive change in your community?"
-    ],
-    'einstein': [
-      "Imagination is more important than knowledge. Knowledge is limited, imagination embraces the entire world. What are you imagining for the future?",
-      "The important thing is not to stop questioning. Curiosity has its own reason for existing. What questions drive your curiosity?",
-      "Try not to become a person of success, but rather try to become a person of value. How do you define value in your life?"
-    ]
-  };
-
-  const figureResponses = responses[figureId as keyof typeof responses] || responses['einstein'];
-  return figureResponses[Math.floor(Math.random() * figureResponses.length)];
-};
-
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
@@ -79,6 +84,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const figure = figuresData[figureId as keyof typeof figuresData];
@@ -89,46 +95,87 @@ export default function ChatPage() {
       return;
     }
 
-    // Add welcome message
-    const welcomeMessage: Message = {
-      id: '1',
-      content: figure.welcomeMessage,
-      sender: 'figure',
-      timestamp: new Date()
-    };
-    setMessages([welcomeMessage]);
-  }, [figure, router]);
+    // Load conversation history
+    const history = getConversationHistory(figureId);
+    
+    if (history.length > 0) {
+      // Convert stored messages to local message format
+      const convertedMessages: Message[] = history.map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        sender: msg.sender,
+        timestamp: msg.timestamp
+      }));
+      setMessages(convertedMessages);
+    } else {
+      // Add welcome message for new conversations
+      const welcomeMessage: Message = {
+        id: '1',
+        content: figure.welcomeMessage,
+        sender: 'figure',
+        timestamp: new Date()
+      };
+      setMessages([welcomeMessage]);
+      
+      // Save welcome message to storage
+      const storedWelcomeMessage: StoredMessage = {
+        ...welcomeMessage,
+        figureId: figure.name
+      };
+      saveMessage(figureId, storedWelcomeMessage);
+    }
+    
+    setIsLoading(false);
+  }, [figure, router, figureId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const handleSendMessage = async () => {
-    if (!inputMessage.trim()) return;
+    if (!inputMessage.trim() || isTyping) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
-      content: inputMessage,
+      content: inputMessage.trim(),
       sender: 'user',
       timestamp: new Date()
     };
 
     setMessages(prev => [...prev, userMessage]);
+    
+    // Save user message
+    const storedUserMessage: StoredMessage = {
+      ...userMessage,
+      figureId: figure.name
+    };
+    saveMessage(figureId, storedUserMessage);
+    
     setInputMessage('');
     setIsTyping(true);
 
-    // Simulate AI response delay
+    // Generate AI response with realistic delay
+    const delay = getTypingDelay();
     setTimeout(() => {
-      const response = generateResponse(figureId, inputMessage);
+      const response = generateAIResponse(figureId, inputMessage);
       const figureMessage: Message = {
         id: (Date.now() + 1).toString(),
         content: response,
         sender: 'figure',
         timestamp: new Date()
       };
+      
       setMessages(prev => [...prev, figureMessage]);
+      
+      // Save figure message
+      const storedFigureMessage: StoredMessage = {
+        ...figureMessage,
+        figureId: figure.name
+      };
+      saveMessage(figureId, storedFigureMessage);
+      
       setIsTyping(false);
-    }, 1500 + Math.random() * 1000);
+    }, delay);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -138,8 +185,67 @@ export default function ChatPage() {
     }
   };
 
+  const handleClearConversation = () => {
+    clearConversation(figureId);
+    const welcomeMessage: Message = {
+      id: '1',
+      content: figure.welcomeMessage,
+      sender: 'figure',
+      timestamp: new Date()
+    };
+    setMessages([welcomeMessage]);
+    
+    // Save new welcome message
+    const storedWelcomeMessage: StoredMessage = {
+      ...welcomeMessage,
+      figureId: figure.name
+    };
+    saveMessage(figureId, storedWelcomeMessage);
+  };
+
+  const handleExportConversation = () => {
+    const exportText = exportConversation(figureId);
+    const blob = new Blob([exportText], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `conversation-${figureId}-${new Date().toISOString().split('T')[0]}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const handleShareConversation = async () => {
+    const exportText = exportConversation(figureId);
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Conversation with ${figure.name}`,
+          text: exportText
+        });
+      } catch (error) {
+        // Fallback to clipboard
+        navigator.clipboard.writeText(exportText);
+      }
+    } else {
+      navigator.clipboard.writeText(exportText);
+    }
+  };
+
   if (!figure) {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading conversation...</p>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -183,13 +289,18 @@ export default function ChatPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>
+            <DropdownMenuItem onClick={handleShareConversation}>
               <Share className="mr-2 h-4 w-4" />
               Share Conversation
             </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Copy className="mr-2 h-4 w-4" />
-              Copy Link
+            <DropdownMenuItem onClick={handleExportConversation}>
+              <Download className="mr-2 h-4 w-4" />
+              Export as Text
+            </DropdownMenuItem>
+            <Separator />
+            <DropdownMenuItem onClick={handleClearConversation} className="text-red-600">
+              <Trash2 className="mr-2 h-4 w-4" />
+              Clear Conversation
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
