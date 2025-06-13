@@ -9,6 +9,10 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Separator } from '@/components/ui/separator';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { AuthDialog } from '@/components/auth/auth-dialog';
+import { UserMenu } from '@/components/auth/user-menu';
+import { useAuth } from '@/hooks/use-auth';
 import { generateAIResponse, getTypingDelay } from '@/lib/ai-responses';
 import { saveMessage, getConversationHistory, clearConversation, exportConversation, type StoredMessage } from '@/lib/conversation-storage';
 
@@ -85,8 +89,10 @@ export default function ChatPage() {
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const { user, isAuthenticated, isLoading: authLoading, signOut, setUser } = useAuth();
   const figure = figuresData[figureId as keyof typeof figuresData];
 
   useEffect(() => {
@@ -95,45 +101,64 @@ export default function ChatPage() {
       return;
     }
 
-    // Load conversation history
-    const history = getConversationHistory(figureId);
-    
-    if (history.length > 0) {
-      // Convert stored messages to local message format
-      const convertedMessages: Message[] = history.map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        sender: msg.sender,
-        timestamp: msg.timestamp
-      }));
-      setMessages(convertedMessages);
-    } else {
-      // Add welcome message for new conversations
-      const welcomeMessage: Message = {
-        id: '1',
-        content: figure.welcomeMessage,
-        sender: 'figure',
-        timestamp: new Date()
-      };
-      setMessages([welcomeMessage]);
-      
-      // Save welcome message to storage
-      const storedWelcomeMessage: StoredMessage = {
-        ...welcomeMessage,
-        figureId: figure.name
-      };
-      saveMessage(figureId, storedWelcomeMessage);
+    // Check authentication after auth loading is complete
+    if (!authLoading && !isAuthenticated) {
+      setShowAuthDialog(true);
+      setIsLoading(false);
+      return;
     }
-    
-    setIsLoading(false);
-  }, [figure, router, figureId]);
+
+    if (isAuthenticated) {
+      // Load conversation history
+      const history = getConversationHistory(figureId);
+      
+      if (history.length > 0) {
+        // Convert stored messages to local message format
+        const convertedMessages: Message[] = history.map(msg => ({
+          id: msg.id,
+          content: msg.content,
+          sender: msg.sender,
+          timestamp: msg.timestamp
+        }));
+        setMessages(convertedMessages);
+      } else {
+        // Add welcome message for new conversations
+        const welcomeMessage: Message = {
+          id: '1',
+          content: figure.welcomeMessage,
+          sender: 'figure',
+          timestamp: new Date()
+        };
+        setMessages([welcomeMessage]);
+        
+        // Save welcome message to storage
+        const storedWelcomeMessage: StoredMessage = {
+          ...welcomeMessage,
+          figureId: figure.name
+        };
+        saveMessage(figureId, storedWelcomeMessage);
+      }
+      
+      setIsLoading(false);
+    }
+  }, [figure, router, figureId, isAuthenticated, authLoading]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleAuthSuccess = (user: any) => {
+    setUser(user);
+    setShowAuthDialog(false);
+  };
+
+  const handleSignOut = () => {
+    signOut();
+    router.push('/');
+  };
+
   const handleSendMessage = async () => {
-    if (!inputMessage.trim() || isTyping) return;
+    if (!inputMessage.trim() || isTyping || !isAuthenticated) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -186,6 +211,8 @@ export default function ChatPage() {
   };
 
   const handleClearConversation = () => {
+    if (!isAuthenticated) return;
+    
     clearConversation(figureId);
     const welcomeMessage: Message = {
       id: '1',
@@ -204,6 +231,8 @@ export default function ChatPage() {
   };
 
   const handleExportConversation = () => {
+    if (!isAuthenticated) return;
+    
     const exportText = exportConversation(figureId);
     const blob = new Blob([exportText], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
@@ -217,6 +246,8 @@ export default function ChatPage() {
   };
 
   const handleShareConversation = async () => {
+    if (!isAuthenticated) return;
+    
     const exportText = exportConversation(figureId);
     if (navigator.share) {
       try {
@@ -237,13 +268,83 @@ export default function ChatPage() {
     return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
   }
 
-  if (isLoading) {
+  if (authLoading || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
           <p className="text-gray-600">Loading conversation...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Show auth requirement if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <div className="flex flex-col h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        {/* Header */}
+        <header className="bg-white/80 backdrop-blur-sm border-b px-4 py-3 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => router.push('/')}
+              className="p-2"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div className="flex items-center space-x-3">
+              <div className="w-10 h-10 rounded-full overflow-hidden">
+                <img 
+                  src={figure.image} 
+                  alt={figure.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <div>
+                <h1 className="font-semibold text-gray-900">{figure.name}</h1>
+                <div className="flex items-center space-x-2">
+                  <Badge variant="outline" className="text-xs">
+                    {figure.era}
+                  </Badge>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <Button onClick={() => setShowAuthDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+            Sign In to Chat
+          </Button>
+        </header>
+
+        {/* Auth Required Message */}
+        <div className="flex-1 flex items-center justify-center px-4">
+          <Card className="max-w-md w-full bg-white/80 backdrop-blur-sm">
+            <CardContent className="p-8 text-center">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <User className="h-8 w-8 text-blue-600" />
+              </div>
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">Sign In Required</h2>
+              <p className="text-gray-600 mb-6">
+                Please sign in to start your conversation with {figure.name} and save your chat history.
+              </p>
+              <Button 
+                onClick={() => setShowAuthDialog(true)} 
+                className="w-full bg-blue-600 hover:bg-blue-700"
+              >
+                Sign In to Continue
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Auth Dialog */}
+        <AuthDialog 
+          open={showAuthDialog} 
+          onOpenChange={setShowAuthDialog}
+          onAuthSuccess={handleAuthSuccess}
+        />
       </div>
     );
   }
@@ -282,28 +383,32 @@ export default function ChatPage() {
           </div>
         </div>
         
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm">
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={handleShareConversation}>
-              <Share className="mr-2 h-4 w-4" />
-              Share Conversation
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleExportConversation}>
-              <Download className="mr-2 h-4 w-4" />
-              Export as Text
-            </DropdownMenuItem>
-            <Separator />
-            <DropdownMenuItem onClick={handleClearConversation} className="text-red-600">
-              <Trash2 className="mr-2 h-4 w-4" />
-              Clear Conversation
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <div className="flex items-center space-x-2">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" size="sm">
+                <MoreVertical className="h-5 w-5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleShareConversation}>
+                <Share className="mr-2 h-4 w-4" />
+                Share Conversation
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportConversation}>
+                <Download className="mr-2 h-4 w-4" />
+                Export as Text
+              </DropdownMenuItem>
+              <Separator />
+              <DropdownMenuItem onClick={handleClearConversation} className="text-red-600">
+                <Trash2 className="mr-2 h-4 w-4" />
+                Clear Conversation
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          {user && <UserMenu user={user} onSignOut={handleSignOut} />}
+        </div>
       </header>
 
       {/* Figure Info Panel */}

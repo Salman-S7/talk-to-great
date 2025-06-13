@@ -6,6 +6,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { AuthDialog } from '@/components/auth/auth-dialog';
+import { UserMenu } from '@/components/auth/user-menu';
+import { useAuth } from '@/hooks/use-auth';
 import { getConversationSummaries, type ConversationSummary } from '@/lib/conversation-storage';
 import Link from 'next/link';
 
@@ -78,6 +81,9 @@ export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [recentConversations, setRecentConversations] = useState<ConversationSummary[]>([]);
+  const [showAuthDialog, setShowAuthDialog] = useState(false);
+  
+  const { user, isAuthenticated, isLoading, signOut, setUser } = useAuth();
 
   useEffect(() => {
     // Load recent conversations on component mount
@@ -91,6 +97,25 @@ export default function Home() {
     const matchesCategory = selectedCategory === 'All' || figure.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
+
+  const handleAuthSuccess = (user: any) => {
+    setUser(user);
+  };
+
+  const handleSignOut = () => {
+    signOut();
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100">
@@ -107,9 +132,22 @@ export default function Home() {
                 <p className="text-sm text-gray-600">Converse with the Past</p>
               </div>
             </div>
-            <Button variant="outline" className="hidden md:flex">
-              Sign In
-            </Button>
+            
+            <div className="flex items-center space-x-4">
+              {isAuthenticated && user ? (
+                <>
+                  <div className="hidden md:flex flex-col items-end">
+                    <span className="text-sm font-medium text-gray-900">Welcome back!</span>
+                    <span className="text-xs text-gray-600">{user.name}</span>
+                  </div>
+                  <UserMenu user={user} onSignOut={handleSignOut} />
+                </>
+              ) : (
+                <Button onClick={() => setShowAuthDialog(true)} className="bg-blue-600 hover:bg-blue-700">
+                  Sign In
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -135,19 +173,29 @@ export default function Home() {
           </p>
           
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center">
-            <Button size="lg" className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg">
-              Start Exploring
+            <Button 
+              size="lg" 
+              className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-4 text-lg"
+              onClick={() => !isAuthenticated && setShowAuthDialog(true)}
+            >
+              {isAuthenticated ? 'Start Exploring' : 'Get Started'}
               <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
             <Button variant="outline" size="lg" className="px-8 py-4 text-lg">
               Watch Demo
             </Button>
           </div>
+          
+          {!isAuthenticated && (
+            <p className="text-sm text-gray-500 mt-4">
+              Sign up to save your conversations and access them anywhere
+            </p>
+          )}
         </div>
       </section>
 
-      {/* Recent Conversations */}
-      {recentConversations.length > 0 && (
+      {/* Recent Conversations - Only show if authenticated and has conversations */}
+      {isAuthenticated && recentConversations.length > 0 && (
         <section className="py-16 bg-white/50 backdrop-blur-sm">
           <div className="container mx-auto px-4">
             <div className="max-w-6xl mx-auto">
@@ -308,12 +356,22 @@ export default function Home() {
                       <span className="text-xs text-gray-500">Available</span>
                     </div>
                   </div>
-                  <Link href={`/chat/${figure.id}`}>
-                    <Button className="w-full group-hover:bg-blue-700 transition-colors">
-                      Start Conversation
+                  {isAuthenticated ? (
+                    <Link href={`/chat/${figure.id}`}>
+                      <Button className="w-full group-hover:bg-blue-700 transition-colors">
+                        Start Conversation
+                        <MessageCircle className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button 
+                      className="w-full group-hover:bg-blue-700 transition-colors"
+                      onClick={() => setShowAuthDialog(true)}
+                    >
+                      Sign In to Chat
                       <MessageCircle className="ml-2 h-4 w-4" />
                     </Button>
-                  </Link>
+                  )}
                 </CardContent>
               </Card>
             ))}
@@ -352,6 +410,13 @@ export default function Home() {
           </div>
         </div>
       </footer>
+
+      {/* Auth Dialog */}
+      <AuthDialog 
+        open={showAuthDialog} 
+        onOpenChange={setShowAuthDialog}
+        onAuthSuccess={handleAuthSuccess}
+      />
     </div>
   );
 }
