@@ -1,6 +1,6 @@
-module.exports = {
+module.exports = {Add commentMore actions
   plugins: {
-    '@tailwindcss/postcss': {},
+    tailwindcss: {},
     autoprefixer: {},
   },
 };
