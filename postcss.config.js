@@ -1,5 +1,5 @@
-module.exports = {Add commentMore actions
-  plugins: {
+module.exports = {
+  plugins: {Add commentMore actions
     tailwindcss: {},
     autoprefixer: {},
   },
