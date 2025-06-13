@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { ArrowLeft, Send, User, Bot, Clock, Copy, Share, MoreVertical, Download, Trash2, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,7 +13,6 @@ import { Separator } from '@/components/ui/separator';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { AuthDialog } from '@/components/auth/auth-dialog';
 import { UserMenu } from '@/components/auth/user-menu';
-import { useAuth } from '@/hooks/use-auth';
 import { generateAIResponse, getTypingDelay } from '@/lib/ai-responses';
 import { saveMessage, getConversationHistory, clearConversation, exportConversation, type StoredMessage } from '@/lib/conversation-storage';
 
@@ -84,6 +84,7 @@ interface Message {
 export default function ChatPage() {
   const params = useParams();
   const router = useRouter();
+  const { data: session, status } = useSession();
   const figureId = params?.figureId as string;
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputMessage, setInputMessage] = useState('');
@@ -92,8 +93,9 @@ export default function ChatPage() {
   const [showAuthDialog, setShowAuthDialog] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const { user, isAuthenticated, isLoading: authLoading, signOut, setUser } = useAuth();
   const figure = figuresData[figureId as keyof typeof figuresData];
+  const isAuthenticated = status === 'authenticated';
+  const authLoading = status === 'loading';
 
   useEffect(() => {
     if (!figure) {
@@ -147,14 +149,8 @@ export default function ChatPage() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleAuthSuccess = (user: any) => {
-    setUser(user);
+  const handleAuthSuccess = () => {
     setShowAuthDialog(false);
-  };
-
-  const handleSignOut = () => {
-    signOut();
-    router.push('/');
   };
 
   const handleSendMessage = async () => {
@@ -407,7 +403,7 @@ export default function ChatPage() {
             </DropdownMenuContent>
           </DropdownMenu>
           
-          {user && <UserMenu user={user} onSignOut={handleSignOut} />}
+          {session?.user && <UserMenu user={session.user} />}
         </div>
       </header>
 

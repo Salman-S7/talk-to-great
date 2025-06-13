@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSession } from 'next-auth/react';
 import { MessageCircle, Users, Clock, Sparkles, ArrowRight, Search, History } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { AuthDialog } from '@/components/auth/auth-dialog';
 import { UserMenu } from '@/components/auth/user-menu';
-import { useAuth } from '@/hooks/use-auth';
 import { getConversationSummaries, type ConversationSummary } from '@/lib/conversation-storage';
 import Link from 'next/link';
 
@@ -78,12 +78,11 @@ const historicalFigures = [
 const categories = ['All', 'Politics & Law', 'Science', 'Literature', 'Philosophy', 'Human Rights'];
 
 export default function Home() {
+  const { data: session, status } = useSession();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [recentConversations, setRecentConversations] = useState<ConversationSummary[]>([]);
   const [showAuthDialog, setShowAuthDialog] = useState(false);
-  
-  const { user, isAuthenticated, isLoading, signOut, setUser } = useAuth();
 
   useEffect(() => {
     // Load recent conversations on component mount
@@ -98,13 +97,8 @@ export default function Home() {
     return matchesSearch && matchesCategory;
   });
 
-  const handleAuthSuccess = (user: any) => {
-    setUser(user);
-  };
-
-  const handleSignOut = () => {
-    signOut();
-  };
+  const isAuthenticated = status === 'authenticated';
+  const isLoading = status === 'loading';
 
   if (isLoading) {
     return (
@@ -134,13 +128,13 @@ export default function Home() {
             </div>
             
             <div className="flex items-center space-x-4">
-              {isAuthenticated && user ? (
+              {isAuthenticated && session?.user ? (
                 <>
                   <div className="hidden md:flex flex-col items-end">
                     <span className="text-sm font-medium text-gray-900">Welcome back!</span>
-                    <span className="text-xs text-gray-600">{user.name}</span>
+                    <span className="text-xs text-gray-600">{session.user.name}</span>
                   </div>
-                  <UserMenu user={user} onSignOut={handleSignOut} />
+                  <UserMenu user={session.user} />
                 </>
               ) : (
                 <Button onClick={() => setShowAuthDialog(true)} className="bg-blue-600 hover:bg-blue-700">
@@ -415,7 +409,7 @@ export default function Home() {
       <AuthDialog 
         open={showAuthDialog} 
         onOpenChange={setShowAuthDialog}
-        onAuthSuccess={handleAuthSuccess}
+        onAuthSuccess={() => setShowAuthDialog(false)}
       />
     </div>
   );
